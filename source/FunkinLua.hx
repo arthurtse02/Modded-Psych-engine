@@ -29,6 +29,7 @@ import openfl.utils.Assets;
 import flixel.math.FlxMath;
 import flixel.util.FlxSave;
 import flixel.addons.transition.FlxTransitionableState;
+import flixel.system.FlxAssets.FlxShader;
 #if sys
 import sys.FileSystem;
 import sys.io.File;
@@ -36,6 +37,10 @@ import sys.io.File;
 import Type.ValueType;
 import Controls;
 import DialogueBoxPsych;
+#if hscript
+import hscript.Parser;
+import hscript.Interp;
+#end
 
 #if desktop
 import Discord;
@@ -53,6 +58,10 @@ class FunkinLua {
 	public var camTarget:FlxCamera;
 	public var scriptName:String = '';
 	var gonnaClose:Bool = false;
+	
+	#if hscript
+	public static var haxeInterp:Interp = null;
+	#end
 
 	public var accessedProps:Map<String, Dynamic> = null;
 	public function new(script:String) {
@@ -253,6 +262,43 @@ class FunkinLua {
 				return;
 			}
 			luaTrace("Script doesn't exist!");
+		});
+		
+		Lua_helper.add_callback(lua, "runHaxeCode", function(codeToRun:String) {
+			#if hscript
+			initHaxeInterp();
+
+			try {
+				var myFunction:Dynamic = haxeInterp.expr(new Parser().parseString(codeToRun));
+				myFunction();
+			}
+			catch (e:Dynamic) {
+				switch(e)
+				{
+					case 'Null Function Pointer', 'SReturn':
+						//nothing
+					default:
+						luaTrace(scriptName.replace(SUtil.getPath(), "") + ":" + lastCalledFunction + " - " + e, false, false, FlxColor.RED);
+				}
+			}
+			#end
+		});
+
+		Lua_helper.add_callback(lua, "addHaxeLibrary", function(libName:String, ?libPackage:String = '') {
+			#if hscript
+			initHaxeInterp();
+
+			try {
+				var str:String = '';
+				if(libPackage.length > 0)
+					str = libPackage + '.';
+
+				haxeInterp.variables.set(libName, Type.resolveClass(str + libName));
+			}
+			catch (e:Dynamic) {
+				luaTrace(scriptName.replace(SUtil.getPath(), "") + ":" + lastCalledFunction + " - " + e, false, false, FlxColor.RED);
+			}
+			#end
 		});
 		
 		Lua_helper.add_callback(lua, "loadSong", function(?name:String = null, ?difficultyNum:Int = -1) {
@@ -1152,6 +1198,35 @@ class FunkinLua {
 				pee.destroy();
 				PlayState.instance.modchartSprites.remove(tag);
 			}
+		});
+		
+		Lua_helper.add_callback(lua, "luaSpriteExists", function(tag:String) {
+			return PlayState.instance.modchartSprites.exists(tag);
+		});
+		Lua_helper.add_callback(lua, "luaTextExists", function(tag:String) {
+			return PlayState.instance.modchartTexts.exists(tag);
+		});
+		Lua_helper.add_callback(lua, "luaSoundExists", function(tag:String) {
+			return PlayState.instance.modchartSounds.exists(tag);
+		});
+
+		Lua_helper.add_callback(lua, "setHealthBarColors", function(leftHex:String, rightHex:String) {
+			var left:FlxColor = Std.parseInt(leftHex);
+			if(!leftHex.startsWith('0x')) left = Std.parseInt('0xff' + leftHex);
+			var right:FlxColor = Std.parseInt(rightHex);
+			if(!rightHex.startsWith('0x')) right = Std.parseInt('0xff' + rightHex);
+
+			PlayState.instance.healthBar.createFilledBar(left, right);
+			PlayState.instance.healthBar.updateBar();
+		});
+		Lua_helper.add_callback(lua, "setTimeBarColors", function(leftHex:String, rightHex:String) {
+			var left:FlxColor = Std.parseInt(leftHex);
+			if(!leftHex.startsWith('0x')) left = Std.parseInt('0xff' + leftHex);
+			var right:FlxColor = Std.parseInt(rightHex);
+			if(!rightHex.startsWith('0x')) right = Std.parseInt('0xff' + rightHex);
+
+			PlayState.instance.timeBar.createFilledBar(right, left);
+			PlayState.instance.timeBar.updateBar();
 		});
 
 		Lua_helper.add_callback(lua, "setObjectCamera", function(obj:String, camera:String = '') {
